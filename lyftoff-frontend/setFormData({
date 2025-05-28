@@ -1,0 +1,1 @@
+      .then(res = longTermGoal: res.data.longTermGoal, shortTermGoals: res.data.shortTermGoals 

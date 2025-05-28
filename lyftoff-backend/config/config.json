@@ -1,0 +1,23 @@
+{
+  "development": {
+    "username": "postgres",
+    "password": "Michael26614",
+    "database": "lyftoff",
+    "host": "localhost",
+    "dialect": "postgres"
+  },
+  "test": {
+    "username": "postgres",
+    "password": "Michael26614",
+    "database": "lyftoff_test",
+    "host": "localhost",
+    "dialect": "postgres"
+  },
+  "production": {
+    "username": "postgres",
+    "password": "Michael26614",
+    "database": "lyftoff_production",
+    "host": "localhost",
+    "dialect": "postgres"
+  }
+}
