@@ -1,35 +1,60 @@
-const { Model } = require('sequelize');
-   const { v4: uuidv4 } = require('uuid');
+module.exports = (sequelize, DataTypes) => {
+  const Goal = sequelize.define('Goal', {
+    id: {
+      type: DataTypes.UUID,
+      defaultValue: DataTypes.UUIDV4,
+      primaryKey: true,
+    },
+    userId: {
+      type: DataTypes.UUID,
+      allowNull: false,
+      references: {
+        model: 'Users',
+        key: 'id',
+      },
+    },
+    title: {
+      type: DataTypes.STRING,
+      allowNull: false,
+    },
+    description: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+    },
+    category: {
+      type: DataTypes.ENUM('Academic', 'Career', 'Personal'),
+      allowNull: true,
+    },
+    priority: {
+      type: DataTypes.ENUM('Low', 'Medium', 'High'),
+      allowNull: true,
+    },
+    progress: {
+      type: DataTypes.INTEGER,
+      defaultValue: 0,
+      validate: {
+        min: 0,
+        max: 100,
+      },
+    },
+    createdAt: {
+      type: DataTypes.DATE,
+      allowNull: false,
+      defaultValue: DataTypes.NOW,
+    },
+    updatedAt: {
+      type: DataTypes.DATE,
+      allowNull: false,
+      defaultValue: DataTypes.NOW,
+    },
+  }, {
+    tableName: 'Goals',
+    timestamps: true,
+  });
 
-   module.exports = (sequelize, DataTypes) => {
-     class Goal extends Model {
-       static associate(models) {
-         Goal.belongsTo(models.User, { foreignKey: 'userId' });
-       }
-     }
-     Goal.init({
-       id: {
-         type: DataTypes.UUID,
-         defaultValue: () => uuidv4(),
-         primaryKey: true,
-       },
-       userId: {
-         type: DataTypes.INTEGER,
-         allowNull: false,
-         references: { model: 'Users', key: 'id' },
-       },
-       title: DataTypes.STRING,
-       description: DataTypes.TEXT,
-       category: DataTypes.STRING,
-       priority: DataTypes.STRING,
-       milestones: DataTypes.JSON,
-       deadline: DataTypes.DATE,
-       resources: DataTypes.JSON,
-       reflection: DataTypes.TEXT,
-       progress: DataTypes.INTEGER,
-     }, {
-       sequelize,
-       modelName: 'Goal',
-     });
-     return Goal;
-   };
+  Goal.associate = (models) => {
+    Goal.belongsTo(models.User, { foreignKey: 'userId', onDelete: 'CASCADE' });
+  };
+
+  return Goal;
+};

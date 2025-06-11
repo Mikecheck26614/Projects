@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { toast } from 'react-toastify';
+import { io } from 'socket.io-client';
+import { Link } from 'react-router-dom';
 
 const ProfileOverview = () => {
   const [profile, setProfile] = useState(null);
@@ -13,10 +15,7 @@ const ProfileOverview = () => {
     interests: '',
     longTermGoal: '',
   });
-
-  useEffect(() => {
-    fetchProfile();
-  }, []);
+  const [socket, setSocket] = useState(null);
 
   const fetchProfile = async () => {
     try {
@@ -33,11 +32,58 @@ const ProfileOverview = () => {
         interests: response.data.interests || '',
         longTermGoal: response.data.longTermGoal || '',
       });
+      localStorage.setItem('userId', response.data.userId); // Store userId
+      return response.data.userId;
     } catch (error) {
       console.error('Error fetching profile:', error);
       toast.error('Failed to load profile');
+      return null;
     }
   };
+
+  useEffect(() => {
+    // Initialize WebSocket
+    const newSocket = io('http://localhost:3000', {
+      path: '/ws',
+      auth: { token: localStorage.getItem('token') },
+      transports: ['websocket'],
+    });
+
+    setSocket(newSocket);
+
+    // Fetch profile and join room
+    fetchProfile().then(userId => {
+      if (userId && newSocket.connected) {
+        newSocket.emit('join', `user_${userId}`);
+        console.log(`Joined room: user_${userId}`);
+      }
+    });
+
+    newSocket.on('connect', () => {
+      console.log('WebSocket connected:', newSocket.id);
+      const userId = localStorage.getItem('userId');
+      if (userId) {
+        newSocket.emit('join', `user_${userId}`);
+        console.log(`Joined room: user_${userId}`);
+      }
+    });
+
+    newSocket.on('connect_error', (error) => {
+      console.error('WebSocket error:', error.message);
+      toast.error('Failed to connect to real-time updates');
+    });
+
+    newSocket.on('profile_update', (updatedProfile) => {
+      setProfile(updatedProfile);
+      toast.info('Profile updated in real-time');
+    });
+
+    // Cleanup
+    return () => {
+      newSocket.disconnect();
+      setSocket(null);
+    };
+  }, []);
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -48,12 +94,16 @@ const ProfileOverview = () => {
     e.preventDefault();
     try {
       const token = localStorage.getItem('token');
-      await axios.post('http://localhost:3000/api/profile', formData, {
+      const response = await axios.post('http://localhost:3000/api/profile', formData, {
         headers: { Authorization: `Bearer ${token}` },
       });
       setEditMode(false);
-      fetchProfile();
+      await fetchProfile();
       toast.success('Profile updated successfully');
+      // Emit WebSocket update
+      if (socket) {
+        socket.emit('profile_update', { userId: localStorage.getItem('userId'), ...response.data });
+      }
     } catch (error) {
       console.error('Error updating profile:', error);
       toast.error('Failed to update profile');
@@ -63,14 +113,14 @@ const ProfileOverview = () => {
   const handleAvatarUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    const formData = new FormData();
-    formData.append('avatar', file);
+    const avatarFormData = new FormData();
+    avatarFormData.append('avatar', file);
     try {
       const token = localStorage.getItem('token');
-      await axios.post('http://localhost:3000/api/profile/avatar', formData, {
+      await axios.post('http://localhost:3000/api/profile/avatar', avatarFormData, {
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'multipart/form-data' },
       });
-      fetchProfile();
+      await fetchProfile();
       toast.success('Avatar uploaded successfully');
     } catch (error) {
       console.error('Error uploading avatar:', error);
@@ -189,21 +239,29 @@ const ProfileOverview = () => {
         </form>
       ) : (
         <div className="space-y-4">
-          <p className="text-base"><strong>Name:</strong> {profile.firstName} {profile.lastName}</p>
-          <p className="text-base"><strong>Stage:</strong> {profile.academicLevel === 'high-school' ? 'High School' : profile.academicLevel === 'university' ? 'University' : 'Professional'}</p>
-          <p className="text-base"><strong>Email:</strong> {profile.email}</p>
+          <p className="text-base"><strong>Name:</strong> {profile.firstName || 'Not set'} {profile.lastName || ''}</p>
+          <p className="text-base"><strong>Stage:</strong> {profile.academicLevel === 'high-school' ? 'High School' : profile.academicLevel === 'university' ? 'University' : profile.academicLevel === 'professional' ? 'Professional' : 'Not set'}</p>
+          <p className="text-base"><strong>Email:</strong> {profile.email || 'Not set'}</p>
           <p className="text-base"><strong>Bio:</strong> {profile.bio || 'No bio yet'}</p>
           <p className="text-base"><strong>Interests:</strong> {profile.interests || 'None listed'}</p>
           <p className="text-base"><strong>Long-Term Goal:</strong> {profile.longTermGoal || 'Not set'}</p>
-          <p className="text-base"><strong>Short-Term Goals:</strong> {profile.shortTermGoals.join(', ') || 'None'}</p>
-          <p className="text-base"><strong>Achievements:</strong> {profile.achievements.map(a => a.name).join(', ') || 'None'}</p>
-          <p className="text-base"><strong>Profile Completion:</strong> {Math.round(profile.completion)}%</p>
-          <button
-            onClick={() => setEditMode(true)}
-            className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
-          >
-            Edit Profile
-          </button>
+          <p className="text-base"><strong>Short-Term Goals:</strong> {Array.isArray(profile.shortTermGoals) && profile.shortTermGoals.length ? profile.shortTermGoals.join(', ') : 'None'}</p>
+          <p className="text-base"><strong>Achievements:</strong> {Array.isArray(profile.achievements) && profile.achievements.length ? profile.achievements.map(a => a.name || a).join(', ') : 'None'}</p>
+          <p className="text-base"><strong>Profile Completion:</strong> {Math.round(profile.completion) || 0}%</p>
+          <div className="flex space-x-4">
+            <button
+              onClick={() => setEditMode(true)}
+              className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+            >
+              Edit Profile
+            </button>
+            <Link
+              to="/report"
+              className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
+            >
+              View Report
+            </Link>
+          </div>
         </div>
       )}
     </div>

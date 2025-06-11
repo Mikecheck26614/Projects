@@ -1,40 +1,97 @@
-const { Sequelize, DataTypes } = require('sequelize');
-const sequelize = require('../config/database');
+module.exports = (sequelize, DataTypes) => {
+  const Profile = sequelize.define('Profile', {
+    id: {
+      type: DataTypes.UUID,
+      defaultValue: DataTypes.UUIDV4,
+      primaryKey: true,
+    },
+    userId: {
+      type: DataTypes.UUID,
+      allowNull: false,
+      unique: true,
+      references: {
+        model: 'Users',
+        key: 'id',
+      },
+    },
+    firstName: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+    lastName: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+    email: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+    phoneNumber: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+    address: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+    academicLevel: {
+      type: DataTypes.ENUM('high-school', 'university', 'professional'),
+      allowNull: true,
+    },
+    interests: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+    bio: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+    },
+    avatarUrl: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+    longTermGoal: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+    shortTermGoals: {
+      type: DataTypes.JSON,
+      allowNull: true,
+    },
+    achievements: {
+      type: DataTypes.JSON,
+      allowNull: true,
+    },
+    onboarding: {
+      type: DataTypes.JSON,
+      defaultValue: '{}',
+    },
+    scenario: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+    },
+    notifications: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: true,
+    },
+    createdAt: {
+      type: DataTypes.DATE,
+      allowNull: false,
+      defaultValue: DataTypes.NOW,
+    },
+    updatedAt: {
+      type: DataTypes.DATE,
+      allowNull: false,
+      defaultValue: DataTypes.NOW,
+    },
+  }, {
+    tableName: 'Profiles',
+    timestamps: true,
+  });
 
-const Profile = sequelize.define('Profile', {
-  id: {
-    type: DataTypes.INTEGER,
-    autoIncrement: true,
-    primaryKey: true
-  },
-  userId: {
-    type: DataTypes.INTEGER,
-    allowNull: false
-  },
-  firstName: { type: DataTypes.STRING },
-  lastName: { type: DataTypes.STRING },
-  email: { type: DataTypes.STRING },
-  phoneNumber: { type: DataTypes.STRING },
-  address: { type: DataTypes.STRING },
-  academicLevel: { type: DataTypes.STRING },
-  interests: { type: DataTypes.STRING },
-  bio: { type: DataTypes.TEXT },
-  avatarUrl: { type: DataTypes.STRING },
-  longTermGoal: { type: DataTypes.STRING },
-  shortTermGoals: { type: DataTypes.JSON }, // Matches your setup
-  achievements: { type: DataTypes.JSON }, // Matches your setup
-  onboarding: { 
-    type: DataTypes.TEXT, 
-    defaultValue: JSON.stringify({}) // Kept as-is, though BOOLEAN might be more typical
-  },
-  scenario: { type: DataTypes.TEXT },
-  notifications: { 
-    type: DataTypes.BOOLEAN, 
-    defaultValue: true 
-  }
-}, {
-  tableName: 'Profiles',
-  timestamps: true
-});
+  Profile.associate = (models) => {
+    Profile.belongsTo(models.User, { foreignKey: 'userId', onDelete: 'CASCADE' });
+  };
 
-module.exports = Profile;
+  return Profile;
+};

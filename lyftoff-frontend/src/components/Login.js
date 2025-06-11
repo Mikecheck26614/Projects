@@ -13,6 +13,7 @@ function Login() {
     try {
       const response = await axios.post('http://localhost:3000/api/auth/login', { email, password });
       localStorage.setItem('token', response.data.token);
+      localStorage.setItem('userId', response.data.userId); // Store userId
       toast.success('Logged in! Redirecting...');
       setTimeout(() => navigate('/onboarding'), 1000);
     } catch (err) {

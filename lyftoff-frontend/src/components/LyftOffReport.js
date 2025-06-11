@@ -1,11 +1,8 @@
-import React, { useState, useEffect, Suspense } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import axios from 'axios';
 import { toast } from 'react-toastify';
-import { Bar } from 'react-chartjs-2';
-import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend } from 'chart.js';
+import Chart from 'chart.js/auto';
 import { PDFDownloadLink, Document, Page, Text, View, StyleSheet } from '@react-pdf/renderer';
-
-ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend);
 
 const styles = StyleSheet.create({
   page: { padding: 30, fontSize: 12 },
@@ -84,130 +81,183 @@ const ReportPDF = ({ report, insights }) => (
 const LyftOffReport = () => {
   const [report, setReport] = useState(null);
   const [insights, setInsights] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const chartRef = useRef(null);
+  const chartInstanceRef = useRef(null);
 
-  useEffect(() => {
-    fetchReport();
-  }, []);
+  const fetchInsights = useCallback(async (reportData) => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await axios.post(
+        'http://localhost:3000/api/ai/insights',
+        {
+          roadmapStats: reportData.roadmapStats,
+          userProfile: reportData.profile,
+        },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      setInsights(response.data.insights);
+    } catch (error) {
+      console.error('Error fetching insights:', error);
+      toast.error('Failed to load insights');
+    }
+  }, []); // No dependencies since token is from localStorage
 
-  const fetchReport = async () => {
+  const fetchReport = useCallback(async () => {
     try {
       const token = localStorage.getItem('token');
       const response = await axios.get('http://localhost:3000/api/report', {
         headers: { Authorization: `Bearer ${token}` },
       });
       setReport(response.data);
-      const insightsResponse = await axios.post(
-        'http://localhost:3000/api/ai/insights',
-        {
-          roadmapStats: response.data.roadmapStats,
-          userProfile: response.data.profile,
-        },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      setInsights(insightsResponse.data.insights);
-      setLoading(false);
+      fetchInsights(response.data);
     } catch (error) {
       console.error('Error fetching report:', error);
       toast.error('Failed to load report');
-      setLoading(false);
     }
-  };
+  }, [fetchInsights]); // Add fetchInsights as a dependency
 
-  if (loading) return <div className="text-center text-gray-600">Loading report...</div>;
-  if (!report) return <div className="text-center text-gray-600">No report available</div>;
+  useEffect(() => {
+    fetchReport();
+    return () => {
+      if (chartInstanceRef.current) {
+        chartInstanceRef.current.destroy();
+        chartInstanceRef.current = null;
+      }
+    };
+  }, [fetchReport]);
 
-  const chartData = {
-    labels: ['Total Roadmaps', 'Completed Roadmaps', 'Total Steps', 'Completed Steps', 'Total Goals', 'Completed Goals'],
-    datasets: [
-      {
-        label: 'Stats',
-        data: [
-          report.roadmapStats.totalRoadmaps,
-          report.roadmapStats.completedRoadmaps,
-          report.roadmapStats.totalSteps,
-          report.roadmapStats.completedSteps,
-          report.goalStats.totalGoals,
-          report.goalStats.completedGoals,
-        ],
-        backgroundColor: ['#3b82f6', '#f7d154', '#3b82f6', '#f7d154', '#10b981', '#f43f5e'],
-      },
-    ],
-  };
+  useEffect(() => {
+    if (report && chartRef.current) {
+      if (chartInstanceRef.current) {
+        chartInstanceRef.current.destroy();
+      }
+      const ctx = chartRef.current.getContext('2d');
+      chartInstanceRef.current = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: ['Total Roadmaps', 'Completed Roadmaps', 'Total Steps', 'Completed Steps', 'Total Goals', 'Completed Goals'],
+          datasets: [
+            {
+              label: 'Progress Stats',
+              data: [
+                report.roadmapStats.totalRoadmaps,
+                report.roadmapStats.completedRoadmaps,
+                report.roadmapStats.totalSteps,
+                report.roadmapStats.completedSteps,
+                report.goalStats.totalGoals,
+                report.goalStats.completedGoals,
+              ],
+              backgroundColor: [
+                'rgba(54, 162, 235, 0.6)',
+                'rgba(75, 192, 192, 0.6)',
+                'rgba(255, 206, 86, 0.6)',
+                'rgba(153, 102, 255, 0.6)',
+                'rgba(255, 159, 64, 0.6)',
+                'rgba(255, 99, 132, 0.6)',
+              ],
+              borderColor: [
+                'rgba(54, 162, 235, 1)',
+                'rgba(75, 192, 192, 1)',
+                'rgba(255, 206, 86, 1)',
+                'rgba(153, 102, 255, 1)',
+                'rgba(255, 159, 64, 1)',
+                'rgba(255, 99, 132, 1)',
+              ],
+              borderWidth: 1,
+            },
+          ],
+        },
+        options: {
+          scales: {
+            y: {
+              beginAtZero: true,
+              title: {
+                display: true,
+                text: 'Count',
+              },
+            },
+          },
+          plugins: {
+            legend: {
+              display: true,
+              position: 'top',
+            },
+            title: {
+              display: true,
+              text: 'Roadmap and Goal Progress',
+            },
+          },
+        },
+      });
+    }
+  }, [report]);
 
-  const scoreChartData = {
-    labels: report.historicalScores.map(s => s.date),
-    datasets: [
-      {
-        label: 'Score Trend',
-        data: report.historicalScores.map(s => s.score),
-        borderColor: '#3b82f6',
-        fill: false,
-      },
-    ],
-  };
+  if (!report) return <div className="text-center text-gray-600">Loading...</div>;
 
   return (
     <div className="max-w-4xl mx-auto p-6 bg-white rounded-lg shadow-md">
       <h2 className="text-2xl font-bold text-blue-600 mb-4">LyftOff Progress Report</h2>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div>
-          <h3 className="text-lg font-semibold text-blue-600 mb-2">Overview</h3>
-          <p className="text-base">Overall Score: <span className="font-bold">{report.score}%</span></p>
-          <p className="text-base">Academic Level: {report.profile.academicLevel}</p>
-          <p className="text-base">Profile Completion: {report.profile.firstName ? 'Complete' : 'Incomplete'}</p>
-        </div>
-        <div>
-          <h3 className="text-lg font-semibold text-blue-600 mb-2">Categories</h3>
-          {Object.entries(report.categories || {}).map(([key, value]) => (
-            <p key={key} className="text-base">{key}: <span className="font-bold">{value}%</span></p>
-          ))}
-        </div>
+      <div className="mb-6">
+        <h3 className="text-lg font-semibold text-gray-800">Overview</h3>
+        <p className="text-base">Overall Score: {report.score}%</p>
+        <p className="text-base">Academic Level: {report.profile.academicLevel}</p>
+        <p className="text-base">Profile Completion: {report.profile.firstName ? 'Complete' : 'Incomplete'}</p>
       </div>
-      <div className="mt-6">
-        <h3 className="text-lg font-semibold text-blue-600 mb-2">Stats</h3>
-        <Suspense fallback={<div className="text-gray-600">Loading chart...</div>}>
-          <Bar data={chartData} options={{ responsive: true, plugins: { legend: { position: 'top' } } }} />
-        </Suspense>
-      </div>
-      <div className="mt-6">
-        <h3 className="text-lg font-semibold text-blue-600 mb-2">AI-Driven Insights</h3>
-        {insights.map((insight, index) => (
-          <p key={index} className="text-base text-gray-700">{insight}</p>
+      <div className="mb-6">
+        <h3 className="text-lg font-semibold text-gray-800">Categories</h3>
+        {Object.entries(report.categories || {}).map(([key, value]) => (
+          <p key={key} className="text-base">{key}: {value}%</p>
         ))}
       </div>
-      <div className="mt-6">
-        <h3 className="text-lg font-semibold text-blue-600 mb-2">Achievements</h3>
-        <ul className="list-disc pl-5">
-          {report.achievements.map((achievement, index) => (
-            <li key={index} className="text-base">
-              {typeof achievement === 'string' ? achievement : `${achievement.name}: ${achievement.description}`}
-            </li>
-          ))}
-        </ul>
+      <div className="mb-6">
+        <h3 className="text-lg font-semibold text-gray-800">Progress Chart</h3>
+        <canvas ref={chartRef} className="w-full h-64"></canvas>
       </div>
-      <div className="mt-6">
-        <h3 className="text-lg font-semibold text-blue-600 mb-2">Recommendations</h3>
+      <div className="mb-6">
+        <h3 className="text-lg font-semibold text-gray-800">Roadmap Stats</h3>
+        <p className="text-base">Total Roadmaps: {report.roadmapStats.totalRoadmaps}</p>
+        <p className="text-base">Completed Roadmaps: {report.roadmapStats.completedRoadmaps}</p>
+        <p className="text-base">Total Steps: {report.roadmapStats.totalSteps}</p>
+        <p className="text-base">Completed Steps: {report.roadmapStats.completedSteps}</p>
+        <p className="text-base">Steps with Deadlines: {report.roadmapStats.stepsWithDeadlines}</p>
+      </div>
+      <div className="mb-6">
+        <h3 className="text-lg font-semibold text-gray-800">Goal Stats</h3>
+        <p className="text-base">Total Goals: {report.goalStats.totalGoals}</p>
+        <p className="text-base">Completed Goals: {report.goalStats.completedGoals}</p>
+      </div>
+      <div className="mb-6">
+        <h3 className="text-lg font-semibold text-gray-800">Achievements</h3>
+        {report.achievements.map((achievement, index) => (
+          <p key={index} className="text-base">
+            - {typeof achievement === 'string' ? achievement : achievement.name || 'Unnamed Achievement'}: {typeof achievement === 'string' ? '' : achievement.description || ''}
+          </p>
+        ))}
+      </div>
+      <div className="mb-6">
+        <h3 className="text-lg font-semibold text-gray-800">AI-Driven Insights</h3>
+        {insights.map((insight, index) => (
+          <p key={index} className="text-base">{insight}</p>
+        ))}
+      </div>
+      <div className="mb-6">
+        <h3 className="text-lg font-semibold text-gray-800">Recommendations</h3>
         <p className="text-base font-medium">Institutions:</p>
-        <ul className="list-disc pl-5">
-          {report.recommendations.institutions.map((inst, index) => (
-            <li key={index} className="text-base">{inst.name} ({inst.fit}): {inst.reason}</li>
-          ))}
-        </ul>
-        <p className="text-base font-medium mt-2">Scholarships:</p>
-        <ul className="list-disc pl-5">
-          {report.recommendations.scholarships.map((sch, index) => (
-            <li key={index} className="text-base">{sch.name} ({sch.amount}): {sch.eligibility}</li>
-          ))}
-        </ul>
+        {report.recommendations.institutions.map((inst, index) => (
+          <p key={index} className="text-base">- {inst.name} ({inst.fit}): {inst.reason}</p>
+        ))}
+        <p className="text-base font-medium">Scholarships:</p>
+        {report.recommendations.scholarships.map((sch, index) => (
+          <p key={index} className="text-base">- {sch.name} ({sch.amount}): {sch.eligibility}</p>
+        ))}
       </div>
-      <div className="mt-6">
-        <h3 className="text-lg font-semibold text-blue-600 mb-2">Score Trend</h3>
-        <Suspense fallback={<div className="text-gray-600">Loading chart...</div>}>
-          <Bar data={scoreChartData} options={{ responsive: true, plugins: { legend: { position: 'top' } } }} />
-        </Suspense>
+      <div className="mb-6">
+        <h3 className="text-lg font-semibold text-gray-800">Score Trend</h3>
+        {report.historicalScores.map((score, index) => (
+          <p key={index} className="text-base">{score.date}: {score.score}/100</p>
+        ))}
       </div>
-      <div className="mt-6">
+      <div className="text-center">
         <PDFDownloadLink
           document={<ReportPDF report={report} insights={insights} />}
           fileName="LyftOff_Report.pdf"

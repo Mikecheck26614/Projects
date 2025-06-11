@@ -1,38 +1,41 @@
+const fs = require('fs');
+const path = require('path');
+const Sequelize = require('sequelize');
 const sequelize = require('../config/database');
-const User = require('./User');
-const Profile = require('./Profile');
-const Roadmap = require('./Roadmap');
-const RoadmapStep = require('./RoadmapStep');
-const ProfileDocument = require('./ProfileDocument');
+
+const db = {};
+
+// Dynamically load all model files
+fs.readdirSync(__dirname)
+  .filter(file => file !== 'index.js' && file.endsWith('.js'))
+  .forEach(file => {
+    const model = require(path.join(__dirname, file))(sequelize, Sequelize.DataTypes);
+    db[model.name] = model;
+  });
 
 // Define associations
-User.hasOne(Profile, { foreignKey: 'userId', constraints: true, onDelete: 'CASCADE' });
-Profile.belongsTo(User, { foreignKey: 'userId' });
-
-User.hasMany(Roadmap, { foreignKey: 'userId' });
-Roadmap.belongsTo(User, { foreignKey: 'userId' });
-
-Roadmap.hasMany(RoadmapStep, { foreignKey: 'roadmapId', as: 'RoadmapSteps' });
-RoadmapStep.belongsTo(Roadmap, { foreignKey: 'roadmapId' });
-
-User.hasMany(ProfileDocument, { foreignKey: 'userId' });
-ProfileDocument.belongsTo(User, { foreignKey: 'userId' });
-
-// Sync database schema
-(async () => {
-  try {
-    await sequelize.sync({ alter: true }); // Adds missing columns without dropping data
-    console.log('Database schema synced successfully');
-  } catch (error) {
-    console.error('Error syncing database:', error);
+Object.keys(db).forEach(modelName => {
+  if (db[modelName].associate) {
+    db[modelName].associate(db);
   }
-})();
+});
 
-module.exports = {
-  sequelize,
-  User,
-  Profile,
-  Roadmap,
-  RoadmapStep,
-  ProfileDocument
-};
+// Explicit associations for clarity
+db.User.hasOne(db.Profile, { foreignKey: 'userId', constraints: true, onDelete: 'CASCADE' });
+db.Profile.belongsTo(db.User, { foreignKey: 'userId' });
+
+db.User.hasMany(db.Roadmap, { foreignKey: 'userId' });
+db.Roadmap.belongsTo(db.User, { foreignKey: 'userId' });
+
+db.RoadmapStep.belongsTo(db.Roadmap, { foreignKey: 'roadmapId' });
+
+db.User.hasMany(db.ProfileDocument, { foreignKey: 'userId' });
+db.ProfileDocument.belongsTo(db.User, { foreignKey: 'userId' });
+
+db.User.hasMany(db.Goal, { foreignKey: 'userId' });
+db.Goal.belongsTo(db.User, { foreignKey: 'userId' });
+
+db.sequelize = sequelize;
+db.Sequelize = Sequelize;
+
+module.exports = db;
